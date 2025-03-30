@@ -1,6 +1,7 @@
 import os
 import datetime
 import requests
+import time
 from urllib.parse import quote
 from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
@@ -8,6 +9,7 @@ from markdownify import markdownify
 from transformers import pipeline
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import torch
+from duckduckgo_search.exceptions import DuckDuckGoSearchException
 
 # Disable SSL warnings
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -36,19 +38,38 @@ def select_energy_topic():
 def fetch_energy_content(topic):
     """Recupera contenuti tecnici specifici"""
     sources = []
-    
-    # Ricerca specializzata
+    retries = 3  # Number of retries for rate limit errors
     query = f"{topic} sito:gse.it OR sito:enea.it OR sito:ministero-ambiente.it OR filetype:pdf"
-    with DDGS() as ddgs:
-        results = list(ddgs.text(query, max_results=MAX_SOURCES))
-        sources.extend([r["href"] for r in results])
-    
-    # Fallback per contenuti tecnici
+
+    for attempt in range(retries):
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=MAX_SOURCES))
+                sources.extend([r["href"] for r in results])
+                if len(sources) >= MAX_SOURCES:
+                    break
+        except DuckDuckGoSearchException as e:
+            print(f"Rate limit error: {e}. Retrying ({attempt+1}/{retries})...")
+            time.sleep(5)  # Wait before retrying
+        except Exception as e:
+            print(f"Errore processando query: {e}")
+            break
+
     if len(sources) < 2:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"{topic} tecnico approfondito", max_results=MAX_SOURCES))
-            sources.extend([r["href"] for r in results][:MAX_SOURCES-len(sources)])
-    
+        for attempt in range(retries):
+            try:
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(f"{topic} tecnico approfondito", max_results=MAX_SOURCES))
+                    sources.extend([r["href"] for r in results][:MAX_SOURCES-len(sources)])
+                    if len(sources) >= MAX_SOURCES:
+                        break
+            except DuckDuckGoSearchException as e:
+                print(f"Rate limit error: {e}. Retrying ({attempt+1}/{retries})...")
+                time.sleep(5)  # Wait before retrying
+            except Exception as e:
+                print(f"Errore processando query: {e}")
+                break
+
     content = ""
     for url in sources:
         try:

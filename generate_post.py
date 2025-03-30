@@ -6,6 +6,10 @@ from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 from markdownify import markdownify
 from transformers import pipeline
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+# Disable SSL warnings
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Configurazione
 ENERGY_TOPICS = [
@@ -47,7 +51,7 @@ def fetch_energy_content(topic):
     content = ""
     for url in sources:
         try:
-            response = requests.get(url, timeout=8)
+            response = requests.get(url, timeout=8, verify=False)  # Disable SSL verification
             if url.endswith('.pdf'):
                 content += f"PDF tecnico: {url}\n\n"
                 continue

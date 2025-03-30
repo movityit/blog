@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from markdownify import markdownify
 from transformers import pipeline
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+import torch
 
 # Disable SSL warnings
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -79,15 +80,19 @@ Fonti ufficiali:
 
 Articolo completo:"""
     
-    result = generator(
-        prompt,
-        max_length=1200,
-        num_return_sequences=1,
-        do_sample=True,
-        temperature=0.6  # Più conservativo per contenuti tecnici
-    )
-    
-    return result[0]["generated_text"].split("Articolo completo:")[-1].strip()
+    try:
+        result = generator(
+            prompt,
+            max_length=1200,
+            num_return_sequences=1,
+            do_sample=True,
+            temperature=0.6  # Più conservativo per contenuti tecnici
+        )
+        return result[0]["generated_text"].split("Articolo completo:")[-1].strip()
+    except IndexError as e:
+        print(f"IndexError: {e}")
+        print(f"Prompt: {prompt}")
+        raise e
 
 def save_energy_article(topic, content):
     """Salva con formattazione specifica per energia"""

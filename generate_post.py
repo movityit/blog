@@ -88,11 +88,13 @@ Articolo completo:"""
             do_sample=True,
             temperature=0.6  # Più conservativo per contenuti tecnici
         )
+        if not result or "generated_text" not in result[0]:
+            raise ValueError("Generated text is missing in the result.")
         return result[0]["generated_text"].split("Articolo completo:")[-1].strip()
-    except IndexError as e:
-        print(f"IndexError: {e}")
+    except (IndexError, ValueError) as e:
+        print(f"Error: {e}")
         print(f"Prompt: {prompt}")
-        raise e
+        return "Errore nella generazione dell'articolo. Riprovare con un argomento diverso o verificare il modello GPT."
 
 def save_energy_article(topic, content):
     """Salva con formattazione specifica per energia"""

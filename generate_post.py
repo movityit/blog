@@ -131,8 +131,8 @@ tags: {[t for t in ENERGY_TOPICS if t in topic.lower()]}
 cover: {IMAGE_API.format(query=quote(topic.split()[0]))}
 ---\n\n"""
     
-    os.makedirs("articoli_energia", exist_ok=True)
-    with open(f"articoli_energia/{filename}", "w", encoding='utf-8') as f:
+    os.makedirs("_posts", exist_ok=True)
+    with open(f"_posts/{filename}", "w", encoding='utf-8') as f:
         f.write(frontmatter + content)
     
     return filename

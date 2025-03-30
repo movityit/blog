@@ -1,93 +1,122 @@
 import os
 import datetime
 import requests
+from urllib.parse import quote
+from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 from markdownify import markdownify
-from duckduckgo_search import DDGS
 from transformers import pipeline
-from urllib.parse import quote
-import nltk  # Import nltk
 
-# Configurazione open-source
-nltk.download("punkt")  # Solo al primo avvio
-MODEL = "gpt2"  # Modello open-source (alternativa: "EleutherAI/gpt-neo-125M")
-IMAGE_API = "https://source.unsplash.com/random/800x400/?{query}"
-
-# Argomenti possibili
-topics = [
-    "mobilità elettrica", "energia rinnovabile", "intelligenza artificiale",
-    "quantum computing", "cambiamento climatico", "open source software"
+# Configurazione
+ENERGY_TOPICS = [
+    "mobilità sostenibile", "batterie al litio", "fotovoltaico", 
+    "energia rinnovabile", "bollette energia", "punti ricarica elettrica",
+    "accumulo energetico", "smart grid", "comunità energetiche",
+    "GSE", "fonti rinnovabili", "transizione energetica"
 ]
+MODEL = "gpt2"
+IMAGE_API = "https://source.unsplash.com/random/800x400/?{query}"
+MAX_SOURCES = 3  # Numero fonti da consultare
 
-def get_most_relevant_topic():
-    """Seleziona l'argomento con più risultati recenti"""
+def select_energy_topic():
+    """Seleziona l'argomento energetico più attuale"""
     with DDGS() as ddgs:
-        topic_scores = []
-        for topic in topics:
-            results = list(ddgs.text(f"{topic} ultime notizie 2024", max_results=5))
-            topic_scores.append((topic, len(results)))
-        return max(topic_scores, key=lambda x: x[1])[0]
-
-def fetch_open_content(topic):
-    """Recupera contenuti da fonti aperte (licenze libere)"""
-    sources = [
-        "https://it.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&titles={topic}&explaintext=1",
-        f"https://api.creativecommons.engineering/v1/images?q={quote(topic)}&license_type=commercial,modification"
-    ]
-    content = ""
-    try:
-        # Wikipedia (CC BY-SA)
-        wiki_res = requests.get(sources[0].format(topic=topic), timeout=5).json()
-        page = next(iter(wiki_res["query"]["pages"].values()))
-        content += page.get("extract", "")[:1000] + "\n\n"
+        topic_ranking = []
+        for topic in ENERGY_TOPICS:
+            results = list(ddgs.text(f"{topic} novità 2024", max_results=2))
+            topic_ranking.append((topic, len(results)))
         
-        # Openverse (API immagini CC)
-        img_res = requests.get(sources[1], timeout=5).json()
-        cover_url = img_res["results"][0]["url"] if img_res["results"] else IMAGE_API.format(query=topic)
-    except Exception as e:
-        print(f"Errore fonti aperte: {e}")
-        cover_url = IMAGE_API.format(query=topic)
-    return content.strip(), cover_url
+        return max(topic_ranking, key=lambda x: x[1])[0]
 
-def generate_article(topic, source_text):
-    """Genera testo originale con modello open-source"""
+def fetch_energy_content(topic):
+    """Recupera contenuti tecnici specifici"""
+    sources = []
+    
+    # Ricerca specializzata
+    query = f"{topic} sito:gse.it OR sito:enea.it OR sito:ministero-ambiente.it OR filetype:pdf"
+    with DDGS() as ddgs:
+        results = list(ddgs.text(query, max_results=MAX_SOURCES))
+        sources.extend([r["href"] for r in results])
+    
+    # Fallback per contenuti tecnici
+    if len(sources) < 2:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(f"{topic} tecnico approfondito", max_results=MAX_SOURCES))
+            sources.extend([r["href"] for r in results][:MAX_SOURCES-len(sources)])
+    
+    content = ""
+    for url in sources:
+        try:
+            response = requests.get(url, timeout=8)
+            if url.endswith('.pdf'):
+                content += f"PDF tecnico: {url}\n\n"
+                continue
+                
+            soup = BeautifulSoup(response.text, 'html.parser')
+            text = soup.get_text(separator='\n', strip=True)
+            content += f"## Fonte: {url}\n\n{markdownify(text[:800])}\n\n"
+        except Exception as e:
+            print(f"Errore processando {url}: {e}")
+    
+    return content
+
+def generate_technical_article(topic, sources_text):
+    """Genera contenuto tecnico accurato"""
     generator = pipeline("text-generation", model=MODEL)
-    prompt = f"Scrivi un articolo divulgativo su {topic} basato su questi fatti:\n{source_text[:1500]}\n\n---\nArticolo:"
-    return generator(
+    
+    prompt = f"""Genera un articolo tecnico su {topic} con:
+1. Dati precisi e verificati
+2. Analisi degli sviluppi recenti
+3. Tecnologie coinvolte
+4. Riferimenti normativi (se applicabile)
+
+Fonti ufficiali:
+{sources_text[:2000]}
+
+Articolo completo:"""
+    
+    result = generator(
         prompt,
-        max_length=1024,
+        max_length=1200,
         num_return_sequences=1,
         do_sample=True,
-        temperature=0.7
-    )[0]["generated_text"].split("---\nArticolo:")[-1].strip()
+        temperature=0.6  # Più conservativo per contenuti tecnici
+    )
+    
+    return result[0]["generated_text"].split("Articolo completo:")[-1].strip()
 
-def save_markdown(topic, content, cover_url):
-    """Salva in formato Jekyll con metadati"""
+def save_energy_article(topic, content):
+    """Salva con formattazione specifica per energia"""
     date = datetime.datetime.now().strftime("%Y-%m-%d")
-    filename = f"_posts/{date}-{topic.replace(' ', '-')}.md"
+    filename = f"energia_{date}_{topic.replace(' ', '_')}.md"
     
     frontmatter = f"""---
-title: "{topic.capitalize()}"
+title: "{topic.upper()}"
 date: {date}
-categories: ["tech", "innovazione"]
-cover: {cover_url}
-license: "CC BY-SA 4.0"
+categories: ["energia"]
+tags: {[t for t in ENERGY_TOPICS if t in topic.lower()]}
+cover: {IMAGE_API.format(query=quote(topic.split()[0]))}
 ---\n\n"""
     
-    os.makedirs("_posts", exist_ok=True)
-    with open(filename, "w", encoding="utf-8") as f:
+    os.makedirs("articoli_energia", exist_ok=True)
+    with open(f"articoli_energia/{filename}", "w", encoding='utf-8') as f:
         f.write(frontmatter + content)
+    
     return filename
 
 if __name__ == "__main__":
-    topic = get_most_relevant_topic()
-    print(f"Generazione articolo su: {topic}")
+    print("Avvio generazione articolo energetico...")
     
-    content, cover_url = fetch_open_content(topic)
+    topic = select_energy_topic()
+    print(f"Argomento selezionato: {topic}")
+    
+    content = fetch_energy_content(topic)
     if not content:
-        print("Nessun contenuto valido trovato")
+        print("Nessun contenuto tecnico trovato")
         exit(1)
         
-    article = generate_article(topic, content)
-    saved_file = save_markdown(topic, article, cover_url)
-    print(f"Articolo salvato: {saved_file}\nCopertina: {cover_url}")
+    article = generate_technical_article(topic, content)
+    saved_file = save_energy_article(topic, article)
+    
+    print(f"Articolo generato: {saved_file}")
+    print(f"Anteprima:\n{article[:200]}...")

@@ -1,8 +1,8 @@
-name: Genera Articolo
+name: Genera Articoli
 
 on:
   schedule:
-    - cron: '0 18 * * *'  # Ogni giorno alle 6:00 UTC
+    - cron: '0 20 * * *'  # Ogni giorno alle 18:00 CET
   workflow_dispatch:
 
 jobs:
@@ -18,15 +18,15 @@ jobs:
           python-version: '3.x'
 
       - name: Install dependencies
-        run: pip install googlesearch-python beautifulsoup4 requests markdownify
+        run: pip install duckduckgo-search beautifulsoup4 requests markdownify nltk transformers torch
 
       - name: Run script
-        run: python generate_post.py
+        run: python generate_posts.py
 
       - name: Commit and push
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add .
-          git commit -m "Nuovo articolo del giorno"
+          git add _posts/*.md
+          git commit -m "Nuovi articoli generati automaticamente"
           git push

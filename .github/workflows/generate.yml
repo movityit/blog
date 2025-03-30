@@ -25,10 +25,10 @@ jobs:
     - name: Generate post
       run: python generate_post.py || echo "Script execution failed"
 
-    - name: Add untracked files
+    - name: Commit and push
       run: |
-        git add .
-        git commit -m "Add generated post"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add _posts/*.md
+          git commit -m "Nuovi articoli generati automaticamente"
+          git push

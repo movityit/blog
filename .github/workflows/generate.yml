@@ -21,7 +21,7 @@ jobs:
         run: pip install duckduckgo-search beautifulsoup4 requests markdownify nltk transformers torch
 
       - name: Run script
-        run: python generate_posts.py
+        run: python generate_post.py
 
       - name: Commit and push
         run: |

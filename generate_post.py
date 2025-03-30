@@ -6,7 +6,7 @@ from urllib.parse import quote
 from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 from markdownify import markdownify
-from transformers import pipeline
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import torch
 from duckduckgo_search.exceptions import DuckDuckGoSearchException
@@ -88,7 +88,8 @@ def fetch_energy_content(topic):
 
 def generate_technical_article(topic, sources_text):
     """Genera contenuto tecnico accurato"""
-    generator = pipeline("text-generation", model=MODEL)
+    model = GPT2LMHeadModel.from_pretrained("gpt2")
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
     
     prompt = f"""Genera un articolo tecnico su {topic} con:
 1. Dati precisi e verificati
@@ -101,17 +102,16 @@ Fonti ufficiali:
 
 Articolo completo:"""
     
+    input_ids = tokenizer.encode(prompt, return_tensors='pt')
+    max_length = model.config.max_length
+
+    if input_ids.size(1) > max_length:
+        return "Errore: La lunghezza dell'input supera la lunghezza massima consentita dal modello."
+    
     try:
-        result = generator(
-            prompt,
-            max_length=1200,
-            num_return_sequences=1,
-            do_sample=True,
-            temperature=0.6  # Più conservativo per contenuti tecnici
-        )
-        if not result or "generated_text" not in result[0]:
-            raise ValueError("Generated text is missing in the result.")
-        return result[0]["generated_text"].split("Articolo completo:")[-1].strip()
+        output = model.generate(input_ids, max_length=max_length, pad_token_id=model.config.eos_token_id)
+        generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+        return generated_text.split("Articolo completo:")[-1].strip()
     except (IndexError, ValueError) as e:
         print(f"Error: {e}")
         print(f"Prompt: {prompt}")

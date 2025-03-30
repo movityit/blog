@@ -6,6 +6,7 @@ from markdownify import markdownify
 from duckduckgo_search import DDGS
 from transformers import pipeline
 from urllib.parse import quote
+import nltk  # Import nltk
 
 # Configurazione open-source
 nltk.download("punkt")  # Solo al primo avvio

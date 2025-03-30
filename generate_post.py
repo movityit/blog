@@ -105,8 +105,10 @@ Articolo completo:"""
     input_ids = tokenizer.encode(prompt, return_tensors='pt')
     max_length = model.config.max_length
 
+    # Truncate the input to fit within the model's maximum length
     if input_ids.size(1) > max_length:
-        return "Errore: La lunghezza dell'input supera la lunghezza massima consentita dal modello."
+        truncated_prompt = prompt[:max_length - 10]  # Leave some space for the model to generate text
+        input_ids = tokenizer.encode(truncated_prompt, return_tensors='pt')
     
     try:
         output = model.generate(input_ids, max_length=max_length, pad_token_id=model.config.eos_token_id)
@@ -116,7 +118,6 @@ Articolo completo:"""
         print(f"Error: {e}")
         print(f"Prompt: {prompt}")
         return "Errore nella generazione dell'articolo. Riprovare con un argomento diverso o verificare il modello GPT."
-
 def save_energy_article(topic, content):
     """Salva con formattazione specifica per energia"""
     date = datetime.datetime.now().strftime("%Y-%m-%d")

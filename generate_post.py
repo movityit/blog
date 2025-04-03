@@ -23,7 +23,9 @@ ENERGY_TOPICS = [
 ]
 MODEL = "gpt2"
 IMAGE_API = "https://source.unsplash.com/random/800x400/?{query}"
-MAX_SOURCES = 3  # Numero fonti da consultare
+MAX_SOURCES = 3
+TIMEOUT_SECONDS = 10
+
 
 def select_energy_topic():
     """Seleziona l'argomento energetico più attuale"""
@@ -35,89 +37,71 @@ def select_energy_topic():
         
         return max(topic_ranking, key=lambda x: x[1])[0]
 
+
 def fetch_energy_content(topic):
     """Recupera contenuti tecnici specifici"""
     sources = []
-    retries = 3  # Number of retries for rate limit errors
     query = f"{topic} sito:gse.it OR sito:enea.it OR sito:ministero-ambiente.it OR filetype:pdf"
-
-    for attempt in range(retries):
-        try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=MAX_SOURCES))
-                sources.extend([r["href"] for r in results])
-                if len(sources) >= MAX_SOURCES:
-                    break
-        except DuckDuckGoSearchException as e:
-            print(f"Rate limit error: {e}. Retrying ({attempt+1}/{retries})...")
-            time.sleep(5)  # Wait before retrying
-        except Exception as e:
-            print(f"Errore processando query: {e}")
-            break
-
-    if len(sources) < 2:
-        for attempt in range(retries):
-            try:
-                with DDGS() as ddgs:
-                    results = list(ddgs.text(f"{topic} tecnico approfondito", max_results=MAX_SOURCES))
-                    sources.extend([r["href"] for r in results][:MAX_SOURCES-len(sources)])
-                    if len(sources) >= MAX_SOURCES:
-                        break
-            except DuckDuckGoSearchException as e:
-                print(f"Rate limit error: {e}. Retrying ({attempt+1}/{retries})...")
-                time.sleep(5)  # Wait before retrying
-            except Exception as e:
-                print(f"Errore processando query: {e}")
-                break
-
+    
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=MAX_SOURCES))
+            sources.extend([r["href"] for r in results])
+    except DuckDuckGoSearchException as e:
+        print(f"Errore nella ricerca: {e}")
+    
     content = ""
     for url in sources:
         try:
-            response = requests.get(url, timeout=8, verify=False)  # Disable SSL verification
+            response = requests.get(url, timeout=TIMEOUT_SECONDS, verify=False)
             if url.endswith('.pdf'):
                 content += f"PDF tecnico: {url}\n\n"
                 continue
-                
+            
             soup = BeautifulSoup(response.text, 'html.parser')
             text = soup.get_text(separator='\n', strip=True)
-            content += f"## Fonte: {url}\n\n{markdownify(text[:800])}\n\n"
+            content += f"## Fonte: {url}\n\n{markdownify(text[:1000])}\n\n"
+        except requests.Timeout:
+            print(f"Timeout superato per {url}, saltato.")
         except Exception as e:
             print(f"Errore processando {url}: {e}")
     
     return content
+
 
 def generate_technical_article(topic, sources_text):
     """Genera contenuto tecnico accurato"""
     model = GPT2LMHeadModel.from_pretrained("gpt2")
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
     
-    prompt = f"""Genera un articolo tecnico su {topic} con:
-1. Dati precisi e verificati
-2. Analisi degli sviluppi recenti
-3. Tecnologie coinvolte
-4. Riferimenti normativi (se applicabile)
-
-Fonti ufficiali:
-{sources_text[:2000]}
-
-Articolo completo:"""
+    prompt = f"""
+    Scrivi un articolo tecnico su "{topic}" basandoti sulle seguenti fonti:
+    {sources_text[:2000]}
+    
+    Struttura l'articolo come segue:
+    1. **Introduzione**: Breve panoramica sul tema.
+    2. **Dati chiave**: Informazioni tecniche e numeri rilevanti.
+    3. **Normative e innovazioni recenti**: Analisi degli sviluppi normativi e tecnologici.
+    4. **Prospettive future**: Implicazioni e sviluppi attesi.
+    
+    Articolo:
+    """
     
     input_ids = tokenizer.encode(prompt, return_tensors='pt')
     max_length = model.config.max_length
-
-    # Truncate the input to fit within the model's maximum length
+    
     if input_ids.size(1) > max_length:
-        truncated_prompt = prompt[:max_length - 10]  # Leave some space for the model to generate text
-        input_ids = tokenizer.encode(truncated_prompt, return_tensors='pt')
+        input_ids = input_ids[:, :max_length-10]
     
     try:
         output = model.generate(input_ids, max_length=max_length, pad_token_id=model.config.eos_token_id)
         generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-        return generated_text.split("Articolo completo:")[-1].strip()
-    except (IndexError, ValueError) as e:
-        print(f"Error: {e}")
-        print(f"Prompt: {prompt}")
-        return "Errore nella generazione dell'articolo. Riprovare con un argomento diverso o verificare il modello GPT."
+        return generated_text.split("Articolo:")[-1].strip()
+    except Exception as e:
+        print(f"Errore nella generazione: {e}")
+        return "Errore nella generazione dell'articolo."
+
+
 def save_energy_article(topic, content):
     """Salva con formattazione specifica per energia"""
     date = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -136,6 +120,7 @@ cover: {IMAGE_API.format(query=quote(topic.split()[0]))}
         f.write(frontmatter + content)
     
     return filename
+
 
 if __name__ == "__main__":
     print("Avvio generazione articolo energetico...")

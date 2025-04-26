@@ -1,9 +1,10 @@
 name: Genera Articoli
 
 on:
-  schedule:
-    - cron: '0 20 * * *'  # Ogni giorno alle 20:00 UTC
-  workflow_dispatch:
+  check_run:
+#  schedule:
+#    - cron: '0 20 * * *'  # Ogni giorno alle 20:00 UTC
+#  workflow_dispatch:
 
 jobs:
   generate-post:
